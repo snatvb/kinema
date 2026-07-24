@@ -1,0 +1,50 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+node_modules
+
+# build
+dist
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.pnpm-debug.*
+
+# env files
+.env
+.env.production
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+
+# turbo
+.turbo
+
+# astro
+.astro
+
+# lockfiles (project uses pnpm)
+bun.lock
+package-lock.json
+yarn.lock
+
+# scratch
+debug.ts
+extract-slider.ts
+test_debug.ts
+Slider_raw.txt
+Slider_read_latest.txt

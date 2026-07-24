@@ -1,0 +1,21 @@
+{
+  "name": "@repo/kinema",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "lint": "oxlint .",
+    "check-types": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "22.0.0",
+    "typescript": "5.9.2",
+    "vitest": "4.1.10"
+  }
+}

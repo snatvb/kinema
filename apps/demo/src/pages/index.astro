@@ -1,0 +1,20 @@
+---
+import Layout from '../layouts/Layout.astro'
+import Slider from '../components/Slider.tsx'
+---
+
+<Layout title="Demo">
+  <main>
+    <Slider client:load />
+  </main>
+</Layout>
+
+<style>
+  main {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+  }
+</style>
