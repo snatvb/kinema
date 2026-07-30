@@ -21,8 +21,8 @@ export function createLoop(getTime = Date.now) {
   }
 
   function pause() {
-    rafId = 0
     cancelAnimationFrame(rafId)
+    rafId = 0
   }
 
   return { run, pause, now: getTime }

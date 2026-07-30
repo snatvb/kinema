@@ -80,9 +80,6 @@ export interface Clip<A, I = never, R = never> {
   readonly [Symbol.iterator]: () => Generator<Clip<A, I, R>, A, any>
   readonly cmd: ClipCommand<any, any, any>
   readonly duration: number
-  // ponytail: phantom fields — without them TS treats Clips with different I/R
-  // as mutually assignable (recursion bailout) and collapses yield-type unions
-  // in gen() to the first member
   readonly _I: [I] | undefined
   readonly _R: [R] | undefined
 }
@@ -232,11 +229,13 @@ class FiberImpl {
   readonly pendingForks: Clip<any, any, any>[] = []
   readonly pendingSpawns: Clip<any, any, any>[] = []
   readonly children: FiberImpl[] = []
+  // Reusable per-fiber tick scratch — no [this] array alloc each tick.
+  // Only top-level runtime fibers call tick() directly, one at a time, so
+  // sharing instance state is safe; children are ticked via push onto this stack.
+  private readonly tickStack: FiberImpl[] = []
   parent: FiberImpl | null = null
   interrupted: Interrupted<any> | null = null
   env: FiberEnv = undefined as any
-  // ponytail: fork/spawn children escape to user code via join(fiber) — they
-  // are destroyed but never pooled, a reused handle would corrupt late joins
   pooled = true
   private released = false
 
@@ -289,15 +288,21 @@ class FiberImpl {
   // Fiber finished naturally (stack empty). Pool it without touching its
   // children — spawned descendants may still be running on the runtime list.
   recycle() {
-    if (this.released) return
+    if (this.released) {
+      return
+    }
     this.released = true
     this.children.length = 0
-    if (this.pooled) this.env.pool.push(this)
+    if (this.pooled) {
+      this.env.pool.push(this)
+    }
   }
 
   // Kill fiber + subtree, then pool it
   release() {
-    if (this.released) return
+    if (this.released) {
+      return
+    }
     this.destroy()
     this.recycle()
   }
@@ -468,15 +473,17 @@ class FiberImpl {
     this.interrupted = null
     this.pendingForks.length = 0
     this.pendingSpawns.length = 0
-    // Remove old fork children from runtime fibers before destroying them
     const fibers = this.env.fibers
-    if (fibers) {
-      for (let i = 0; i < this.children.length; i++) {
-        const idx = fibers.indexOf(this.children[i]!)
-        if (idx !== -1) {
-          fibers.splice(idx, 1)
+    if (fibers && this.children.length > 0) {
+      const dead = new Set(this.children)
+      let count = 0
+      for (let i = 0; i < fibers.length; i++) {
+        const f = fibers[i]!
+        if (!dead.has(f)) {
+          fibers[count++] = f
         }
       }
+      fibers.length = count
     }
     for (let i = 0; i < this.children.length; i++) {
       this.children[i]!.release()
@@ -499,7 +506,9 @@ class FiberImpl {
   }
 
   tick(time: number) {
-    if (time < this.spawnedTime) return
+    if (time < this.spawnedTime) {
+      return
+    }
 
     const topFrame = this.stack[this.stack.length - 1]
     const isWaitingForChild = topFrame?._tag === 'WaitingForChild'
@@ -515,10 +524,9 @@ class FiberImpl {
 
     this.lastTickTime = time
 
-    // ponytail: explicit fiber stack instead of recursive child.tick() —
-    // waiting frames push the child that needs ticking, one frame-step per
-    // iteration; depth of the fiber tree no longer maps to call-stack depth
-    const fiberStack: FiberImpl[] = [this]
+    const fiberStack: FiberImpl[] = this.tickStack
+    fiberStack.length = 0
+    fiberStack.push(this)
     while (fiberStack.length > 0) {
       const fiber = fiberStack[fiberStack.length - 1]!
       if (fiber.stack.length === 0) {
@@ -645,12 +653,27 @@ class FiberImpl {
           continue
         }
         if (allDone) {
-          fiber.lastValue =
-            frame.preserveValue !== undefined
-              ? frame.preserveValue
-              : frame.children.map((c) => c.lastValue)
+          let maxTime = -Infinity
+          if (frame.preserveValue !== undefined) {
+            fiber.lastValue = frame.preserveValue
+            for (const c of frame.children) {
+              if (c.nextFiberTime > maxTime) {
+                maxTime = c.nextFiberTime
+              }
+            }
+          } else {
+            const values: any[] = new Array(frame.children.length)
+            for (let i = 0; i < frame.children.length; i++) {
+              const c = frame.children[i]!
+              values[i] = c.lastValue
+              if (c.nextFiberTime > maxTime) {
+                maxTime = c.nextFiberTime
+              }
+            }
+            fiber.lastValue = values
+          }
           // replaces the Infinity sentinel; children always start at >= parent time
-          fiber.nextFiberTime = Math.max(...frame.children.map((c) => c.nextFiberTime))
+          fiber.nextFiberTime = maxTime
           fiber.stack.pop()
           for (const c of frame.children) {
             c.recycle()
@@ -679,7 +702,9 @@ class FiberImpl {
         if (winner) {
           fiber.lastValue = winner.lastValue
           for (const child of frame.children) {
-            if (child !== winner) child.release()
+            if (child !== winner) {
+              child.release()
+            }
           }
           fiber.nextFiberTime = winner.nextFiberTime
           fiber.stack.pop()
@@ -808,24 +833,24 @@ export class KinemaRuntime<Provided = never> {
   }
 
   tick(time: number) {
-    let i = 0
-    while (i < this.fibers.length) {
-      const fiber = this.fibers[i]!
+    let count = 0
+    for (let read = 0; read < this.fibers.length; read++) {
+      const fiber = this.fibers[read]!
       if (fiber.stack.length > 0) {
         fiber.tick(time)
       }
-      if (fiber.stack.length === 0) {
-        this.fibers.splice(i, 1)
-        const interrupted = fiber.interrupted
-        fiber.recycle()
-        if (this.dieOnInterrupt && interrupted) {
-          this.destroyRemaining()
-          throw new Error(`Interrupted: ${String(interrupted.reason)}`)
-        }
+      if (fiber.stack.length > 0) {
+        this.fibers[count++] = fiber
         continue
       }
-      i++
+      const interrupted = fiber.interrupted
+      fiber.recycle()
+      if (this.dieOnInterrupt && interrupted) {
+        this.destroyRemaining()
+        throw new Error(`Interrupted: ${String(interrupted.reason)}`)
+      }
     }
+    this.fibers.length = count
   }
 
   private destroyRemaining() {

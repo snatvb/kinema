@@ -136,8 +136,12 @@ export const easeInOutSine = (t: number) => -(Math.cos(Math.PI * t) - 1) / 2
 export const easeInExpo = (t: number) => (t === 0 ? 0 : Math.pow(2, 10 * t - 10))
 export const easeOutExpo = (t: number) => (t === 1 ? 1 : 1 - Math.pow(2, -10 * t))
 export const easeInOutExpo = (t: number) => {
-  if (t === 0) return 0
-  if (t === 1) return 1
+  if (t === 0) {
+    return 0
+  }
+  if (t === 1) {
+    return 1
+  }
   if (t < 0.5) {
     return Math.pow(2, 20 * t - 10) / 2
   }
@@ -178,17 +182,23 @@ export const easeInOutBounce = (t: number) =>
   t < 0.5 ? (1 - easeOutBounce(1 - 2 * t)) / 2 : (1 + easeOutBounce(2 * t - 1)) / 2
 
 export const easeInElastic = (t: number) => {
-  if (t === 0 || t === 1) return t
+  if (t === 0 || t === 1) {
+    return t
+  }
   return -Math.pow(2, 10 * t - 10) * Math.sin((t * 10 - 10.75) * ((2 * Math.PI) / 3))
 }
 
 export const easeOutElastic = (t: number) => {
-  if (t === 0 || t === 1) return t
+  if (t === 0 || t === 1) {
+    return t
+  }
   return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * ((2 * Math.PI) / 3)) + 1
 }
 
 export const easeInOutElastic = (t: number) => {
-  if (t === 0 || t === 1) return t
+  if (t === 0 || t === 1) {
+    return t
+  }
   if (t < 0.5) {
     return -(Math.pow(2, 20 * t - 10) * Math.sin((20 * t - 11.125) * ((2 * Math.PI) / 4.5))) / 2
   }
